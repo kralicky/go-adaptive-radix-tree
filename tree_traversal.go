@@ -7,25 +7,25 @@ const (
 	traverseContinue
 )
 
-type iteratorLevel struct {
-	node     *artNode
+type iteratorLevel[V any] struct {
+	node     *artNode[V]
 	childIdx int
 }
 
-type iterator struct {
+type iterator[V any] struct {
 	version int // tree version
 
-	tree       *tree
-	nextNode   *artNode
+	tree       *tree[V]
+	nextNode   *artNode[V]
 	depthLevel int
-	depth      []*iteratorLevel
+	depth      []*iteratorLevel[V]
 }
 
-type bufferedIterator struct {
+type bufferedIterator[V any] struct {
 	options  int
-	nextNode Node
+	nextNode Node[V]
 	err      error
-	it       *iterator
+	it       *iterator[V]
 }
 
 func traverseOptions(opts ...int) int {
@@ -42,12 +42,12 @@ func traverseOptions(opts ...int) int {
 	return options
 }
 
-func traverseFilter(options int, callback Callback) Callback {
+func traverseFilter[V any](options int, callback Callback[V]) Callback[V] {
 	if options == TraverseAll {
 		return callback
 	}
 
-	return func(node Node) bool {
+	return func(node Node[V]) bool {
 		if options&TraverseLeaf == TraverseLeaf && node.Kind() == Leaf {
 			return callback(node)
 		} else if options&TraverseNode == TraverseNode && node.Kind() != Leaf {
@@ -58,12 +58,12 @@ func traverseFilter(options int, callback Callback) Callback {
 	}
 }
 
-func (t *tree) ForEach(callback Callback, opts ...int) {
+func (t *tree[V]) ForEach(callback Callback[V], opts ...int) {
 	options := traverseOptions(opts...)
 	t.recursiveForEach(t.root, traverseFilter(options, callback))
 }
 
-func (t *tree) recursiveForEach(current *artNode, callback Callback) traverseAction {
+func (t *tree[V]) recursiveForEach(current *artNode[V], callback Callback[V]) traverseAction {
 	if current == nil {
 		return traverseContinue
 	}
@@ -108,7 +108,7 @@ func (t *tree) recursiveForEach(current *artNode, callback Callback) traverseAct
 	return traverseContinue
 }
 
-func (t *tree) forEachChildren(nullChild *artNode, children []*artNode, callback Callback) traverseAction {
+func (t *tree[V]) forEachChildren(nullChild *artNode[V], children []*artNode[V], callback Callback[V]) traverseAction {
 	if nullChild != nil {
 		if t.recursiveForEach(nullChild, callback) == traverseStop {
 			return traverseStop
@@ -126,11 +126,11 @@ func (t *tree) forEachChildren(nullChild *artNode, children []*artNode, callback
 	return traverseContinue
 }
 
-func (t *tree) ForEachPrefix(key Key, callback Callback) {
+func (t *tree[V]) ForEachPrefix(key Key, callback Callback[V]) {
 	t.forEachPrefix(t.root, key, callback)
 }
 
-func (t *tree) forEachPrefix(current *artNode, key Key, callback Callback) traverseAction {
+func (t *tree[V]) forEachPrefix(current *artNode[V], key Key, callback Callback[V]) traverseAction {
 	if current == nil {
 		return traverseContinue
 	}
@@ -168,7 +168,6 @@ func (t *tree) forEachPrefix(current *artNode, key Key, callback Callback) trave
 				break
 			} else if depth+prefixLen == uint32(len(key)) {
 				return t.recursiveForEach(current, callback)
-
 			}
 			depth += node.prefixLen
 		}
@@ -186,28 +185,29 @@ func (t *tree) forEachPrefix(current *artNode, key Key, callback Callback) trave
 }
 
 // Iterator pattern
-func (t *tree) Iterator(opts ...int) Iterator {
+func (t *tree[V]) Iterator(opts ...int) Iterator[V] {
 	options := traverseOptions(opts...)
 
-	it := &iterator{
+	it := &iterator[V]{
 		version:    t.version,
 		tree:       t,
 		nextNode:   t.root,
 		depthLevel: 0,
-		depth:      []*iteratorLevel{{t.root, nullIdx}}}
+		depth:      []*iteratorLevel[V]{{t.root, nullIdx}},
+	}
 
 	if options&TraverseAll == TraverseAll {
 		return it
 	}
 
-	bti := &bufferedIterator{
+	bti := &bufferedIterator[V]{
 		options: options,
 		it:      it,
 	}
 	return bti
 }
 
-func (ti *iterator) checkConcurrentModification() error {
+func (ti *iterator[V]) checkConcurrentModification() error {
 	if ti.version == ti.tree.version {
 		return nil
 	}
@@ -215,11 +215,11 @@ func (ti *iterator) checkConcurrentModification() error {
 	return ErrConcurrentModification
 }
 
-func (ti *iterator) HasNext() bool {
+func (ti *iterator[V]) HasNext() bool {
 	return ti != nil && ti.nextNode != nil
 }
 
-func (ti *iterator) Next() (Node, error) {
+func (ti *iterator[V]) Next() (Node[V], error) {
 	if !ti.HasNext() {
 		return nil, ErrNoMoreNodes
 	}
@@ -237,7 +237,7 @@ func (ti *iterator) Next() (Node, error) {
 
 const nullIdx = -1
 
-func nextChild(childIdx int, nullChild *artNode, children []*artNode) ( /*nextChildIdx*/ int /*nextNode*/, *artNode) {
+func nextChild[V any](childIdx int, nullChild *artNode[V], children []*artNode[V]) ( /*nextChildIdx*/ int /*nextNode*/, *artNode[V]) {
 	if childIdx == nullIdx {
 		if nullChild != nil {
 			return 0, nullChild
@@ -256,9 +256,9 @@ func nextChild(childIdx int, nullChild *artNode, children []*artNode) ( /*nextCh
 	return 0, nil
 }
 
-func (ti *iterator) next() {
+func (ti *iterator[V]) next() {
 	for {
-		var nextNode *artNode
+		var nextNode *artNode[V]
 		nextChildIdx := nullIdx
 
 		curNode := ti.depth[ti.depthLevel].node
@@ -317,19 +317,19 @@ func (ti *iterator) next() {
 
 			// make sure that we have enough space for levels
 			if ti.depthLevel+1 >= cap(ti.depth) {
-				newDepthLevel := make([]*iteratorLevel, ti.depthLevel+2)
+				newDepthLevel := make([]*iteratorLevel[V], ti.depthLevel+2)
 				copy(newDepthLevel, ti.depth)
 				ti.depth = newDepthLevel
 			}
 
 			ti.depthLevel++
-			ti.depth[ti.depthLevel] = &iteratorLevel{nextNode, nullIdx}
+			ti.depth[ti.depthLevel] = &iteratorLevel[V]{nextNode, nullIdx}
 			return
 		}
 	}
 }
 
-func (bti *bufferedIterator) HasNext() bool {
+func (bti *bufferedIterator[V]) HasNext() bool {
 	for bti.it.HasNext() {
 		bti.nextNode, bti.err = bti.it.Next()
 		if bti.err != nil {
@@ -347,6 +347,6 @@ func (bti *bufferedIterator) HasNext() bool {
 	return false
 }
 
-func (bti *bufferedIterator) Next() (Node, error) {
+func (bti *bufferedIterator[V]) Next() (Node[V], error) {
 	return bti.nextNode, bti.err
 }

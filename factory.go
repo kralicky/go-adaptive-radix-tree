@@ -4,51 +4,40 @@ import (
 	"unsafe"
 )
 
-type nodeFactory interface {
-	newNode4() *artNode
-	newNode16() *artNode
-	newNode48() *artNode
-	newNode256() *artNode
-	newLeaf(key Key, value interface{}) *artNode
+type nodeFactory[V any] interface {
+	newNode4() *artNode[V]
+	newNode16() *artNode[V]
+	newNode48() *artNode[V]
+	newNode256() *artNode[V]
+	newLeaf(key Key, value V) *artNode[V]
 }
 
-// make sure that objFactory implements all methods of nodeFactory interface
-var _ nodeFactory = &objFactory{}
-
-var factory = newObjFactory()
-
-func newTree() *tree {
-	return &tree{}
-}
-
-type objFactory struct{}
-
-func newObjFactory() nodeFactory {
-	return &objFactory{}
+func newTree[V any]() *tree[V] {
+	return &tree[V]{}
 }
 
 // Simple obj factory implementation
-func (f *objFactory) newNode4() *artNode {
-	return &artNode{kind: Node4, ref: unsafe.Pointer(new(node4))}
+func newNode4[V any]() *artNode[V] {
+	return &artNode[V]{kind: Node4, ref: unsafe.Pointer(new(node4[V]))}
 }
 
-func (f *objFactory) newNode16() *artNode {
-	return &artNode{kind: Node16, ref: unsafe.Pointer(&node16{})}
+func newNode16[V any]() *artNode[V] {
+	return &artNode[V]{kind: Node16, ref: unsafe.Pointer(&node16[V]{})}
 }
 
-func (f *objFactory) newNode48() *artNode {
-	return &artNode{kind: Node48, ref: unsafe.Pointer(&node48{})}
+func newNode48[V any]() *artNode[V] {
+	return &artNode[V]{kind: Node48, ref: unsafe.Pointer(&node48[V]{})}
 }
 
-func (f *objFactory) newNode256() *artNode {
-	return &artNode{kind: Node256, ref: unsafe.Pointer(&node256{})}
+func newNode256[V any]() *artNode[V] {
+	return &artNode[V]{kind: Node256, ref: unsafe.Pointer(&node256[V]{})}
 }
 
-func (f *objFactory) newLeaf(key Key, value interface{}) *artNode {
+func newLeaf[V any](key Key, value V) *artNode[V] {
 	clonedKey := make(Key, len(key))
 	copy(clonedKey, key)
-	return &artNode{
+	return &artNode[V]{
 		kind: Leaf,
-		ref:  unsafe.Pointer(&leaf{key: clonedKey, value: value}),
+		ref:  unsafe.Pointer(&leaf[V]{key: clonedKey, value: value}),
 	}
 }

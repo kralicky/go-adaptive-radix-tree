@@ -9,31 +9,31 @@ import (
 type prefix [MaxPrefixLen]byte
 
 // ART node stores all available nodes, leaf and node type
-type artNode struct {
+type artNode[V any] struct {
 	ref  unsafe.Pointer
 	kind Kind
 }
 
 // a key with the null suffix will be stored as zeroChild
-type node struct {
+type node[V any] struct {
 	prefixLen   uint32
 	prefix      prefix
 	numChildren uint16
-	zeroChild   *artNode
+	zeroChild   *artNode[V]
 }
 
 // Node with 4 children
-type node4 struct {
-	node
-	children [node4Max]*artNode
+type node4[V any] struct {
+	node[V]
+	children [node4Max]*artNode[V]
 	keys     [node4Max]byte
 	present  [node4Max]byte
 }
 
 // Node with 16 children
-type node16 struct {
-	node
-	children [node16Max]*artNode
+type node16[V any] struct {
+	node[V]
+	children [node16Max]*artNode[V]
 	keys     [node16Max]byte
 	present  uint16 // need 16 bits for keys
 }
@@ -44,23 +44,23 @@ const (
 	n48m = 64 // it should be sizeof(node48.present[0])
 )
 
-type node48 struct {
-	node
-	children [node48Max]*artNode
+type node48[V any] struct {
+	node[V]
+	children [node48Max]*artNode[V]
 	keys     [node256Max]byte
 	present  [4]uint64 // need 256 bits for keys
 }
 
 // Node with 256 children
-type node256 struct {
-	node
-	children [node256Max]*artNode
+type node256[V any] struct {
+	node[V]
+	children [node256Max]*artNode[V]
 }
 
 // Leaf node with variable key length
-type leaf struct {
+type leaf[V any] struct {
 	key   Key
-	value interface{}
+	value V
 }
 
 // String returns string representation of the Kind value
@@ -80,15 +80,15 @@ func (k Key) valid(pos int) bool {
 }
 
 // Node interface implementation
-func (an *artNode) node() *node {
-	return (*node)(an.ref)
+func (an *artNode[V]) node() *node[V] {
+	return (*node[V])(an.ref)
 }
 
-func (an *artNode) Kind() Kind {
+func (an *artNode[V]) Kind() Kind {
 	return an.kind
 }
 
-func (an *artNode) Key() Key {
+func (an *artNode[V]) Key() Key {
 	if an.isLeaf() {
 		return an.leaf().key
 	}
@@ -96,19 +96,19 @@ func (an *artNode) Key() Key {
 	return nil
 }
 
-func (an *artNode) Value() Value {
+func (an *artNode[V]) Value() (_ V) {
 	if an.isLeaf() {
 		return an.leaf().value
 	}
 
-	return nil
+	return
 }
 
-func (an *artNode) isLeaf() bool {
+func (an *artNode[V]) isLeaf() bool {
 	return an.kind == Leaf
 }
 
-func (an *artNode) setPrefix(key Key, prefixLen uint32) *artNode {
+func (an *artNode[V]) setPrefix(key Key, prefixLen uint32) *artNode[V] {
 	node := an.node()
 	node.prefixLen = prefixLen
 	for i := uint32(0); i < min(prefixLen, MaxPrefixLen); i++ {
@@ -118,7 +118,7 @@ func (an *artNode) setPrefix(key Key, prefixLen uint32) *artNode {
 	return an
 }
 
-func (an *artNode) matchDeep(key Key, depth uint32) uint32 /* mismatch index*/ {
+func (an *artNode[V]) matchDeep(key Key, depth uint32) uint32 /* mismatch index*/ {
 	mismatchIdx := an.match(key, depth)
 	if mismatchIdx < MaxPrefixLen {
 		return mismatchIdx
@@ -136,7 +136,7 @@ func (an *artNode) matchDeep(key Key, depth uint32) uint32 /* mismatch index*/ {
 }
 
 // Find the minimum leaf under a artNode
-func (an *artNode) minimum() *leaf {
+func (an *artNode[V]) minimum() *leaf[V] {
 	switch an.kind {
 	case Leaf:
 		return an.leaf()
@@ -187,7 +187,7 @@ func (an *artNode) minimum() *leaf {
 	return nil // that should never happen in normal case
 }
 
-func (an *artNode) maximum() *leaf {
+func (an *artNode[V]) maximum() *leaf[V] {
 	switch an.kind {
 	case Leaf:
 		return an.leaf()
@@ -220,7 +220,7 @@ func (an *artNode) maximum() *leaf {
 	return nil // that should never happen in normal case
 }
 
-func (an *artNode) index(c byte) int {
+func (an *artNode[V]) index(c byte) int {
 	switch an.kind {
 	case Node4:
 		node := an.node4()
@@ -259,9 +259,9 @@ func (an *artNode) index(c byte) int {
 	return -1 // not found
 }
 
-var nodeNotFound *artNode
+var nodeNotFound = unsafe.Pointer(new(*artNode[struct{}]))
 
-func (an *artNode) findChild(c byte, valid bool) **artNode {
+func (an *artNode[V]) findChild(c byte, valid bool) **artNode[V] {
 	node := an.node()
 
 	if !valid {
@@ -285,30 +285,30 @@ func (an *artNode) findChild(c byte, valid bool) **artNode {
 		}
 	}
 
-	return &nodeNotFound
+	return (**artNode[V])(nodeNotFound)
 }
 
-func (an *artNode) node4() *node4 {
-	return (*node4)(an.ref)
+func (an *artNode[V]) node4() *node4[V] {
+	return (*node4[V])(an.ref)
 }
 
-func (an *artNode) node16() *node16 {
-	return (*node16)(an.ref)
+func (an *artNode[V]) node16() *node16[V] {
+	return (*node16[V])(an.ref)
 }
 
-func (an *artNode) node48() *node48 {
-	return (*node48)(an.ref)
+func (an *artNode[V]) node48() *node48[V] {
+	return (*node48[V])(an.ref)
 }
 
-func (an *artNode) node256() *node256 {
-	return (*node256)(an.ref)
+func (an *artNode[V]) node256() *node256[V] {
+	return (*node256[V])(an.ref)
 }
 
-func (an *artNode) leaf() *leaf {
-	return (*leaf)(an.ref)
+func (an *artNode[V]) leaf() *leaf[V] {
+	return (*leaf[V])(an.ref)
 }
 
-func (an *artNode) _addChild4(c byte, valid bool, child *artNode) bool {
+func (an *artNode[V]) _addChild4(c byte, valid bool, child *artNode[V]) bool {
 	node := an.node4()
 
 	// grow to node16
@@ -346,7 +346,7 @@ func (an *artNode) _addChild4(c byte, valid bool, child *artNode) bool {
 	return false
 }
 
-func (an *artNode) _addChild16(c byte, valid bool, child *artNode) bool {
+func (an *artNode[V]) _addChild16(c byte, valid bool, child *artNode[V]) bool {
 	node := an.node16()
 
 	if node.numChildren >= node16Max {
@@ -387,7 +387,7 @@ func (an *artNode) _addChild16(c byte, valid bool, child *artNode) bool {
 	return false
 }
 
-func (an *artNode) _addChild48(c byte, valid bool, child *artNode) bool {
+func (an *artNode[V]) _addChild48(c byte, valid bool, child *artNode[V]) bool {
 	node := an.node48()
 	if node.numChildren >= node48Max {
 		newNode := an.grow()
@@ -413,7 +413,7 @@ func (an *artNode) _addChild48(c byte, valid bool, child *artNode) bool {
 	return false
 }
 
-func (an *artNode) _addChild256(c byte, valid bool, child *artNode) bool {
+func (an *artNode[V]) _addChild256(c byte, valid bool, child *artNode[V]) bool {
 	node := an.node256()
 	if !valid {
 		node.zeroChild = child
@@ -425,7 +425,7 @@ func (an *artNode) _addChild256(c byte, valid bool, child *artNode) bool {
 	return false
 }
 
-func (an *artNode) addChild(c byte, valid bool, child *artNode) bool {
+func (an *artNode[V]) addChild(c byte, valid bool, child *artNode[V]) bool {
 	switch an.kind {
 	case Node4:
 		return an._addChild4(c, valid, child)
@@ -443,7 +443,7 @@ func (an *artNode) addChild(c byte, valid bool, child *artNode) bool {
 	return false
 }
 
-func (an *artNode) _deleteChild4(c byte, valid bool) uint16 {
+func (an *artNode[V]) _deleteChild4(c byte, valid bool) uint16 {
 	node := an.node4()
 	if !valid {
 		node.zeroChild = nil
@@ -479,7 +479,7 @@ func (an *artNode) _deleteChild4(c byte, valid bool) uint16 {
 	return numChildren
 }
 
-func (an *artNode) _deleteChild16(c byte, valid bool) uint16 {
+func (an *artNode[V]) _deleteChild16(c byte, valid bool) uint16 {
 	node := an.node16()
 	if !valid {
 		node.zeroChild = nil
@@ -503,7 +503,7 @@ func (an *artNode) _deleteChild16(c byte, valid bool) uint16 {
 	return node.numChildren
 }
 
-func (an *artNode) _deleteChild48(c byte, valid bool) uint16 {
+func (an *artNode[V]) _deleteChild48(c byte, valid bool) uint16 {
 	node := an.node48()
 	if !valid {
 		node.zeroChild = nil
@@ -517,7 +517,7 @@ func (an *artNode) _deleteChild48(c byte, valid bool) uint16 {
 	return node.numChildren
 }
 
-func (an *artNode) _deleteChild256(c byte, valid bool) uint16 {
+func (an *artNode[V]) _deleteChild256(c byte, valid bool) uint16 {
 	node := an.node256()
 	if !valid {
 		node.zeroChild = nil
@@ -530,7 +530,7 @@ func (an *artNode) _deleteChild256(c byte, valid bool) uint16 {
 	return node.numChildren
 }
 
-func (an *artNode) deleteChild(c byte, valid bool) bool {
+func (an *artNode[V]) deleteChild(c byte, valid bool) bool {
 	var (
 		numChildren uint16
 		minChildren uint16
@@ -568,7 +568,7 @@ func (an *artNode) deleteChild(c byte, valid bool) bool {
 	return false
 }
 
-func (an *artNode) copyMeta(src *artNode) *artNode {
+func (an *artNode[V]) copyMeta(src *artNode[V]) *artNode[V] {
 	if src == nil {
 		return an
 	}
@@ -586,10 +586,10 @@ func (an *artNode) copyMeta(src *artNode) *artNode {
 	return an
 }
 
-func (an *artNode) grow() *artNode {
+func (an *artNode[V]) grow() *artNode[V] {
 	switch an.kind {
 	case Node4:
-		node := factory.newNode16().copyMeta(an)
+		node := newNode16[V]().copyMeta(an)
 
 		d := node.node16()
 		s := an.node4()
@@ -606,7 +606,7 @@ func (an *artNode) grow() *artNode {
 		return node
 
 	case Node16:
-		node := factory.newNode48().copyMeta(an)
+		node := newNode48[V]().copyMeta(an)
 
 		d := node.node48()
 		s := an.node16()
@@ -626,7 +626,7 @@ func (an *artNode) grow() *artNode {
 		return node
 
 	case Node48:
-		node := factory.newNode256().copyMeta(an)
+		node := newNode256[V]().copyMeta(an)
 
 		d := node.node256()
 		s := an.node48()
@@ -644,7 +644,7 @@ func (an *artNode) grow() *artNode {
 	return nil
 }
 
-func (an *artNode) shrink() *artNode {
+func (an *artNode[V]) shrink() *artNode[V] {
 	switch an.kind {
 	case Node4:
 		node4 := an.node4()
@@ -682,7 +682,7 @@ func (an *artNode) shrink() *artNode {
 	case Node16:
 		node16 := an.node16()
 
-		newNode := factory.newNode4().copyMeta(an)
+		newNode := newNode4[V]().copyMeta(an)
 		node4 := newNode.node4()
 		node4.numChildren = 0
 		for i := uint16(0); i < node4Max; i++ {
@@ -701,7 +701,7 @@ func (an *artNode) shrink() *artNode {
 	case Node48:
 		node48 := an.node48()
 
-		newNode := factory.newNode16().copyMeta(an)
+		newNode := newNode16[V]().copyMeta(an)
 		node16 := newNode.node16()
 		node16.numChildren = 0
 		for i, idx := range node48.keys {
@@ -724,7 +724,7 @@ func (an *artNode) shrink() *artNode {
 	case Node256:
 		node256 := an.node256()
 
-		newNode := factory.newNode48().copyMeta(an)
+		newNode := newNode48[V]().copyMeta(an)
 		node48 := newNode.node48()
 		node48.numChildren = 0
 		for i, child := range node256.children {
@@ -745,7 +745,7 @@ func (an *artNode) shrink() *artNode {
 }
 
 // Leaf methods
-func (l *leaf) match(key Key) bool {
+func (l *leaf[V]) match(key Key) bool {
 	if len(key) == 0 && len(l.key) == 0 {
 		return true
 	}
@@ -757,7 +757,7 @@ func (l *leaf) match(key Key) bool {
 	return bytes.Compare(l.key[:len(key)], key) == 0
 }
 
-func (l *leaf) prefixMatch(key Key) bool {
+func (l *leaf[V]) prefixMatch(key Key) bool {
 	if key == nil || len(l.key) < len(key) {
 		return false
 	}
@@ -766,7 +766,7 @@ func (l *leaf) prefixMatch(key Key) bool {
 }
 
 // Base node methods
-func (an *artNode) match(key Key, depth uint32) uint32 /* 1st mismatch index*/ {
+func (an *artNode[V]) match(key Key, depth uint32) uint32 /* 1st mismatch index*/ {
 	idx := uint32(0)
 	if len(key)-int(depth) < 0 {
 		return idx
@@ -785,10 +785,10 @@ func (an *artNode) match(key Key, depth uint32) uint32 /* 1st mismatch index*/ {
 }
 
 // Node helpers
-func replaceRef(oldNode **artNode, newNode *artNode) {
+func replaceRef[V any](oldNode **artNode[V], newNode *artNode[V]) {
 	*oldNode = newNode
 }
 
-func replaceNode(oldNode *artNode, newNode *artNode) {
+func replaceNode[V any](oldNode *artNode[V], newNode *artNode[V]) {
 	*oldNode = *newNode
 }

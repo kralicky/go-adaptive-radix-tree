@@ -3,11 +3,11 @@ package main
 import (
 	"fmt"
 
-	art "github.com/plar/go-adaptive-radix-tree"
+	art "github.com/kralicky/go-adaptive-radix-tree"
 )
 
 func DumpTree() {
-	tree := art.New()
+	tree := art.New[string]()
 	terms := []string{"A", "a", "aa"}
 	for _, term := range terms {
 		tree.Insert(art.Key(term), term)
@@ -16,7 +16,7 @@ func DumpTree() {
 }
 
 func SimpleTree() {
-	tree := art.New()
+	tree := art.New[string]()
 
 	tree.Insert(art.Key("Hi, I'm Key"), "Nice to meet you, I'm Value")
 	value, found := tree.Search(art.Key("Hi, I'm Key"))
@@ -24,7 +24,7 @@ func SimpleTree() {
 		fmt.Printf("Search value=%v\n", value)
 	}
 
-	tree.ForEach(func(node art.Node) bool {
+	tree.ForEach(func(node art.Node[string]) bool {
 		fmt.Printf("Callback value=%v\n", node.Value())
 		return true
 	})

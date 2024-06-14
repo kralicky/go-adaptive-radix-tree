@@ -1,17 +1,17 @@
 package art
 
-type tree struct {
+type tree[V any] struct {
 	// version field is updated by each tree modification
 	version int
 
-	root *artNode
+	root *artNode[V]
 	size int
 }
 
 // make sure that tree implements all methods from the Tree interface
-var _ Tree = &tree{}
+var _ Tree[struct{}] = &tree[struct{}]{}
 
-func (t *tree) Insert(key Key, value Value) (Value, bool) {
+func (t *tree[V]) Insert(key Key, value V) (V, bool) {
 	oldValue, updated := t.recursiveInsert(&t.root, key, value, 0)
 	if !updated {
 		t.version++
@@ -21,7 +21,7 @@ func (t *tree) Insert(key Key, value Value) (Value, bool) {
 	return oldValue, updated
 }
 
-func (t *tree) Delete(key Key) (Value, bool) {
+func (t *tree[V]) Delete(key Key) (_ V, _ bool) {
 	value, deleted := t.recursiveDelete(&t.root, key, 0)
 	if deleted {
 		t.version++
@@ -29,10 +29,10 @@ func (t *tree) Delete(key Key) (Value, bool) {
 		return value, true
 	}
 
-	return nil, false
+	return
 }
 
-func (t *tree) Search(key Key) (Value, bool) {
+func (t *tree[V]) Search(key Key) (_ V, _ bool) {
 	current := t.root
 	depth := uint32(0)
 	for current != nil {
@@ -42,7 +42,7 @@ func (t *tree) Search(key Key) (Value, bool) {
 				return leaf.value, true
 			}
 
-			return nil, false
+			return
 		}
 
 		curNode := current.node()
@@ -50,7 +50,7 @@ func (t *tree) Search(key Key) (Value, bool) {
 		if curNode.prefixLen > 0 {
 			prefixLen := current.match(key, depth)
 			if prefixLen != min(curNode.prefixLen, MaxPrefixLen) {
-				return nil, false
+				return
 			}
 			depth += curNode.prefixLen
 		}
@@ -64,12 +64,12 @@ func (t *tree) Search(key Key) (Value, bool) {
 		depth++
 	}
 
-	return nil, false
+	return
 }
 
-func (t *tree) Minimum() (value Value, found bool) {
+func (t *tree[V]) Minimum() (value V, found bool) {
 	if t == nil || t.root == nil {
-		return nil, false
+		return
 	}
 
 	leaf := t.root.minimum()
@@ -77,9 +77,9 @@ func (t *tree) Minimum() (value Value, found bool) {
 	return leaf.value, true
 }
 
-func (t *tree) Maximum() (value Value, found bool) {
+func (t *tree[V]) Maximum() (value V, found bool) {
 	if t == nil || t.root == nil {
-		return nil, false
+		return
 	}
 
 	leaf := t.root.maximum()
@@ -87,7 +87,7 @@ func (t *tree) Maximum() (value Value, found bool) {
 	return leaf.value, true
 }
 
-func (t *tree) Size() int {
+func (t *tree[V]) Size() int {
 	if t == nil || t.root == nil {
 		return 0
 	}
@@ -95,11 +95,11 @@ func (t *tree) Size() int {
 	return t.size
 }
 
-func (t *tree) recursiveInsert(curNode **artNode, key Key, value Value, depth uint32) (Value, bool) {
+func (t *tree[V]) recursiveInsert(curNode **artNode[V], key Key, value V, depth uint32) (_ V, _ bool) {
 	current := *curNode
 	if current == nil {
-		replaceRef(curNode, factory.newLeaf(key, value))
-		return nil, false
+		replaceRef(curNode, newLeaf(key, value))
+		return
 	}
 
 	if current.isLeaf() {
@@ -112,11 +112,11 @@ func (t *tree) recursiveInsert(curNode **artNode, key Key, value Value, depth ui
 			return oldValue, true
 		}
 		// new value, split the leaf into new node4
-		newLeaf := factory.newLeaf(key, value)
+		newLeaf := newLeaf(key, value)
 		leaf2 := newLeaf.leaf()
 		leafsLCP := t.longestCommonPrefix(leaf, leaf2, depth)
 
-		newNode := factory.newNode4()
+		newNode := newNode4[V]()
 		newNode.setPrefix(key[depth:], leafsLCP)
 		depth += leafsLCP
 
@@ -124,7 +124,7 @@ func (t *tree) recursiveInsert(curNode **artNode, key Key, value Value, depth ui
 		newNode.addChild(leaf2.key.charAt(int(depth)), leaf2.key.valid(int(depth)), newLeaf)
 		replaceRef(curNode, newNode)
 
-		return nil, false
+		return
 	}
 
 	node := current.node()
@@ -135,7 +135,7 @@ func (t *tree) recursiveInsert(curNode **artNode, key Key, value Value, depth ui
 			goto NEXT_NODE
 		}
 
-		newNode := factory.newNode4()
+		newNode := newNode4[V]()
 		node4 := newNode.node()
 		node4.prefixLen = prefixMismatchIdx
 		for i := 0; i < int(min(prefixMismatchIdx, MaxPrefixLen)); i++ {
@@ -161,10 +161,10 @@ func (t *tree) recursiveInsert(curNode **artNode, key Key, value Value, depth ui
 		}
 
 		// Insert the new leaf
-		newNode.addChild(key.charAt(int(depth+prefixMismatchIdx)), key.valid(int(depth+prefixMismatchIdx)), factory.newLeaf(key, value))
+		newNode.addChild(key.charAt(int(depth+prefixMismatchIdx)), key.valid(int(depth+prefixMismatchIdx)), newLeaf(key, value))
 		replaceRef(curNode, newNode)
 
-		return nil, false
+		return
 	}
 
 NEXT_NODE:
@@ -176,14 +176,14 @@ NEXT_NODE:
 	}
 
 	// No Child, artNode goes with us
-	current.addChild(key.charAt(int(depth)), key.valid(int(depth)), factory.newLeaf(key, value))
+	current.addChild(key.charAt(int(depth)), key.valid(int(depth)), newLeaf(key, value))
 
-	return nil, false
+	return
 }
 
-func (t *tree) recursiveDelete(curNode **artNode, key Key, depth uint32) (Value, bool) {
+func (t *tree[V]) recursiveDelete(curNode **artNode[V], key Key, depth uint32) (_ V, _ bool) {
 	if t == nil || *curNode == nil || len(key) == 0 {
-		return nil, false
+		return
 	}
 
 	current := *curNode
@@ -194,14 +194,14 @@ func (t *tree) recursiveDelete(curNode **artNode, key Key, depth uint32) (Value,
 			return leaf.value, true
 		}
 
-		return nil, false
+		return
 	}
 
 	node := current.node()
 	if node.prefixLen > 0 {
 		prefixLen := current.match(key, depth)
 		if prefixLen != min(node.prefixLen, MaxPrefixLen) {
-			return nil, false
+			return
 		}
 
 		depth += node.prefixLen
@@ -209,7 +209,7 @@ func (t *tree) recursiveDelete(curNode **artNode, key Key, depth uint32) (Value,
 
 	next := current.findChild(key.charAt(int(depth)), key.valid(int(depth)))
 	if *next == nil {
-		return nil, false
+		return
 	}
 
 	if (*next).isLeaf() {
@@ -219,13 +219,13 @@ func (t *tree) recursiveDelete(curNode **artNode, key Key, depth uint32) (Value,
 			return leaf.value, true
 		}
 
-		return nil, false
+		return
 	}
 
 	return t.recursiveDelete(next, key, depth+1)
 }
 
-func (t *tree) longestCommonPrefix(l1 *leaf, l2 *leaf, depth uint32) uint32 {
+func (t *tree[V]) longestCommonPrefix(l1 *leaf[V], l2 *leaf[V], depth uint32) uint32 {
 	l1key, l2key := l1.key, l2.key
 	idx, limit := depth, min(uint32(len(l1key)), uint32(len(l2key)))
 	for ; idx < limit; idx++ {

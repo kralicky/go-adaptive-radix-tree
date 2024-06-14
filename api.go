@@ -36,15 +36,12 @@ type Kind int
 // Key can be a set of any characters include unicode chars with null bytes.
 type Key []byte
 
-// Value type.
-type Value interface{}
-
 // Callback function type for tree traversal.
 // if the callback function returns false then iteration is terminated.
-type Callback func(node Node) (cont bool)
+type Callback[V any] func(node Node[V]) (cont bool)
 
 // Node interface.
-type Node interface {
+type Node[V any] interface {
 	// Kind returns node type.
 	Kind() Kind
 
@@ -55,12 +52,12 @@ type Node interface {
 
 	// Value returns leaf's value.
 	// This method is only valid for leaf node,
-	// if its called on non-leaf node then returns nil.
-	Value() Value
+	// if its called on non-leaf node then returns the zero value for V.
+	Value() V
 }
 
 // Iterator iterates over nodes in key order.
-type Iterator interface {
+type Iterator[V any] interface {
 	// Returns true if the iteration has more nodes when traversing the tree.
 	HasNext() bool
 
@@ -69,50 +66,50 @@ type Iterator interface {
 	// Check if there is a next node with HasNext method.
 	// Returns ErrConcurrentModification error if the tree has been structurally
 	// modified after the iterator was created.
-	Next() (Node, error)
+	Next() (Node[V], error)
 }
 
 // Tree is an Adaptive Radix Tree interface.
-type Tree interface {
+type Tree[V any] interface {
 	// Insert a new key into the tree.
 	// If the key already in the tree then return oldValue, true and nil, false otherwise.
-	Insert(key Key, value Value) (oldValue Value, updated bool)
+	Insert(key Key, value V) (oldValue V, updated bool)
 
 	// Delete removes a key from the tree and key's value, true is returned.
 	// If the key does not exists then nothing is done and nil, false is returned.
-	Delete(key Key) (value Value, deleted bool)
+	Delete(key Key) (value V, deleted bool)
 
 	// Search returns the value of the specific key.
 	// If the key exists then return value, true and nil, false otherwise.
-	Search(key Key) (value Value, found bool)
+	Search(key Key) (value V, found bool)
 
 	// ForEach executes a provided callback once per leaf node by default.
 	// The callback iteration is terminated if the callback function returns false.
 	// Pass TraverseXXX as an options to execute a provided callback
 	// once per NodeXXX type in the tree.
-	ForEach(callback Callback, options ...int)
+	ForEach(callback Callback[V], options ...int)
 
 	// ForEachPrefix executes a provided callback once per leaf node that
 	// leaf's key starts with the given keyPrefix.
 	// The callback iteration is terminated if the callback function returns false.
-	ForEachPrefix(keyPrefix Key, callback Callback)
+	ForEachPrefix(keyPrefix Key, callback Callback[V])
 
 	// Iterator returns an iterator for preorder traversal over leaf nodes by default.
 	// Pass TraverseXXX as an options to return an iterator for preorder traversal over all NodeXXX types.
-	Iterator(options ...int) Iterator
-	//IteratorPrefix(key Key) Iterator
+	Iterator(options ...int) Iterator[V]
+	// IteratorPrefix(key Key) Iterator
 
 	// Minimum returns the minimum valued leaf, true if leaf is found and nil, false otherwise.
-	Minimum() (min Value, found bool)
+	Minimum() (min V, found bool)
 
 	// Maximum returns the maximum valued leaf, true if leaf is found and nil, false otherwise.
-	Maximum() (max Value, found bool)
+	Maximum() (max V, found bool)
 
 	// Returns size of the tree
 	Size() int
 }
 
 // New creates a new adaptive radix tree
-func New() Tree {
-	return newTree()
+func New[V any]() Tree[V] {
+	return newTree[V]()
 }

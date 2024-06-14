@@ -8,11 +8,11 @@ import (
 )
 
 func TestTreeDump4(t *testing.T) {
-	n4 := factory.newNode4()
-	n4leaf := factory.newLeaf([]byte("key4"), "value4")
+	n4 := newNode4[string]()
+	n4leaf := newLeaf([]byte("key4"), "value4")
 	n4._addChild4('k', true, n4leaf)
 
-	tree := &tree{root: n4}
+	tree := &tree[string]{root: n4}
 	o := tree.String()
 
 	assert.Contains(t, o, "Node4")
@@ -25,11 +25,11 @@ func TestTreeDump4(t *testing.T) {
 }
 
 func TestTreeDump4BinaryValue(t *testing.T) {
-	n4 := factory.newNode4()
-	n4leaf := factory.newLeaf([]byte("key4"), []byte("value4"))
+	n4 := newNode4[[]byte]()
+	n4leaf := newLeaf([]byte("key4"), []byte("value4"))
 	n4._addChild4('k', true, n4leaf)
 
-	tree := &tree{root: n4}
+	tree := &tree[[]byte]{root: n4}
 	o := tree.String()
 
 	assert.Contains(t, o, "Node4")
@@ -42,11 +42,11 @@ func TestTreeDump4BinaryValue(t *testing.T) {
 }
 
 func TestTreeDump4Int(t *testing.T) {
-	n4 := factory.newNode4()
-	n4leaf := factory.newLeaf([]byte("key4"), 4)
+	n4 := newNode4[int]()
+	n4leaf := newLeaf([]byte("key4"), 4)
 	n4._addChild4('k', true, n4leaf)
 
-	tree := &tree{root: n4}
+	tree := &tree[int]{root: n4}
 	o := tree.String()
 
 	assert.Contains(t, o, "Node4")
@@ -59,18 +59,18 @@ func TestTreeDump4Int(t *testing.T) {
 }
 
 func TestTreeDump2NodeWithIntValue(t *testing.T) {
-	n16 := factory.newNode16()
-	n16_2 := factory.newNode16()
-	n16_2leaf := factory.newLeaf([]byte("zima"), 4)
+	n16 := newNode16[int]()
+	n16_2 := newNode16[int]()
+	n16_2leaf := newLeaf([]byte("zima"), 4)
 	n16_2.addChild('z', true, n16_2leaf)
 
-	n16leaf := factory.newLeaf([]byte("key4"), 4)
-	c4leaf := factory.newLeaf([]byte("cey4"), 44)
+	n16leaf := newLeaf([]byte("key4"), 4)
+	c4leaf := newLeaf([]byte("cey4"), 44)
 	n16.addChild('k', true, n16leaf)
 	n16.addChild('c', true, c4leaf)
 	n16.addChild('z', true, n16_2)
 
-	tree := &tree{root: n16}
+	tree := &tree[int]{root: n16}
 	o := tree.String()
 
 	assert.Contains(t, o, "Node16")
@@ -86,11 +86,11 @@ func TestTreeDump2NodeWithIntValue(t *testing.T) {
 }
 
 func TestTreeDump16(t *testing.T) {
-	n16 := factory.newNode16()
-	n16leaf := factory.newLeaf([]byte("key16"), "value16")
+	n16 := newNode16[string]()
+	n16leaf := newLeaf([]byte("key16"), "value16")
 	n16.addChild('k', true, n16leaf)
 
-	tree := &tree{root: n16}
+	tree := &tree[string]{root: n16}
 	o := tree.String()
 
 	assert.Contains(t, o, "Node16")
@@ -103,11 +103,11 @@ func TestTreeDump16(t *testing.T) {
 }
 
 func TestTreeDump48(t *testing.T) {
-	n48 := factory.newNode48()
-	n48leaf := factory.newLeaf([]byte("key48"), "value48")
+	n48 := newNode48[string]()
+	n48leaf := newLeaf([]byte("key48"), "value48")
 	n48.addChild('k', true, n48leaf)
 
-	tree := &tree{root: n48}
+	tree := &tree[string]{root: n48}
 	o := tree.String()
 
 	assert.Contains(t, o, "Node48")
@@ -120,11 +120,11 @@ func TestTreeDump48(t *testing.T) {
 }
 
 func TestTreeDump256(t *testing.T) {
-	n256 := factory.newNode256()
-	n256leaf := factory.newLeaf([]byte("key256"), "value256")
+	n256 := newNode256[string]()
+	n256leaf := newLeaf([]byte("key256"), "value256")
 	n256.addChild('k', true, n256leaf)
 
-	tree := &tree{root: n256}
+	tree := &tree[string]{root: n256}
 	o := tree.String()
 
 	assert.Contains(t, o, "Node256")
@@ -136,11 +136,11 @@ func TestTreeDump256(t *testing.T) {
 }
 
 func TestAppendForExtralOptions(t *testing.T) {
-	tsDec := &treeStringer{make([]depthStorage, 1024), bytes.NewBufferString("")}
+	tsDec := &treeStringer[string]{make([]depthStorage, 1024), bytes.NewBufferString("")}
 	tsDec.append([]byte{1, 2, 3, 4}, printValuesAsDecimal)
 	assert.Equal(t, "[1 2 3 4]", tsDec.buf.String())
 
-	tsHex := &treeStringer{make([]depthStorage, 1024), bytes.NewBufferString("")}
+	tsHex := &treeStringer[string]{make([]depthStorage, 1024), bytes.NewBufferString("")}
 	tsHex.appendKey(
 		[]byte{
 			0, // not present
@@ -158,7 +158,7 @@ func TestAppendForExtralOptions(t *testing.T) {
 		}, printValuesAsHex)
 	assert.Equal(t, "[·  1  2 10 11]", tsHex.buf.String())
 
-	tsDef := &treeStringer{make([]depthStorage, 1024), bytes.NewBufferString("")}
+	tsDef := &treeStringer[string]{make([]depthStorage, 1024), bytes.NewBufferString("")}
 	tsDef.appendKey(
 		[]byte{
 			0, // not present
