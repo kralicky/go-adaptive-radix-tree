@@ -1,5 +1,9 @@
 package art
 
+import (
+	"slices"
+)
+
 type tree[V any] struct {
 	// version field is updated by each tree modification
 	version int
@@ -61,6 +65,72 @@ func (t *tree[V]) Search(key Key) (_ V, _ bool) {
 		} else {
 			current = nil
 		}
+		depth++
+	}
+
+	return
+}
+
+func (t *tree[V]) Resolve(key Key, resolver func(key Key, conflictIndex int) (Key, int)) (value V, found bool) {
+	doResolve := func(conflictIndex int) bool {
+		sub, upperBound := resolver(key, conflictIndex)
+		if upperBound > conflictIndex {
+			key = slices.Replace([]byte(key), conflictIndex, upperBound, sub...)
+			return true
+		}
+		return false
+	}
+
+	current := t.root
+	depth := uint32(0)
+	for current != nil {
+		if current.isLeaf() {
+			leaf := current.leaf()
+
+			for {
+				if leaf.match(key) {
+					return leaf.value, true
+				}
+
+				// find the conflict index starting at depth
+				limit := min(len(leaf.key), len(key))
+				conflictIndex := int(depth)
+				for i := conflictIndex; i < limit; i++ {
+					if leaf.key[i] != key[i] {
+						break
+					}
+					conflictIndex++
+				}
+				if doResolve(conflictIndex) {
+					continue
+				}
+				return
+			}
+		}
+
+		curNode := current.node()
+
+		if curNode.prefixLen > 0 {
+			prefixLen := current.match(key, depth)
+			if prefixLen != min(curNode.prefixLen, MaxPrefixLen) {
+				return
+			}
+			depth += curNode.prefixLen
+		}
+
+	retry:
+		next := current.findChild(key.charAt(int(depth)), key.valid(int(depth)))
+		if *next != nil {
+			current = *next
+		} else {
+			sub, upperBound := resolver(key, int(depth))
+			if upperBound > int(depth) {
+				key = slices.Replace([]byte(key), int(depth), upperBound, sub...)
+				goto retry
+			}
+			current = nil
+		}
+
 		depth++
 	}
 

@@ -1,6 +1,8 @@
 package art
 
-import "errors"
+import (
+	"errors"
+)
 
 // A constant exposing all node types.
 const (
@@ -82,6 +84,16 @@ type Tree[V any] interface {
 	// Search returns the value of the specific key.
 	// If the key exists then return value, true and nil, false otherwise.
 	Search(key Key) (value V, found bool)
+
+	// Resolve attempts to search for the value of the specific key, calling the
+	// provided function to try resolving conflicts by mutating parts of the key
+	// during the tree traversal process.
+	// Whenever a conflict is encountered, the resolver function will be called
+	// with the current key and the index at which it encountered a conflict.
+	// If the function returns a positive upperBound > conflictIndex, the bytes
+	// [conflictIndex:upperBound) in the key will be replaced with substitution,
+	// then the search will continue.
+	Resolve(key Key, resolver func(key Key, conflictIndex int) (substitution Key, upperBound int)) (value V, found bool)
 
 	// ForEach executes a provided callback once per leaf node by default.
 	// The callback iteration is terminated if the callback function returns false.

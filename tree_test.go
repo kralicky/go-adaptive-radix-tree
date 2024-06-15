@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"testing"
 
@@ -847,6 +848,62 @@ func TestTreeTraversalPrefixWords(t *testing.T) {
 		"antisavage",
 	}
 	assert.Equal(t, expected, foundWords)
+}
+
+func TestTreeResolve(t *testing.T) {
+	tree := New[string]()
+
+	tree.Insert(Key("foo.bar.baz"), "foo.bar.baz")
+	tree.Insert(Key("foo.*.baz"), "foo.*.baz")
+	tree.Insert(Key("foo.bar.*"), "foo.bar.*")
+	tree.Insert(Key("*.bar.*"), "*.bar.*")
+
+	resolver := func(key Key, conflictIndex int) (Key, int) {
+		if conflictIndex >= len(key) {
+			return nil, -1
+		}
+		c := key[conflictIndex]
+		if c != '*' && c != '.' {
+			nextDot := slices.Index(key[conflictIndex:], '.')
+			if nextDot == -1 {
+				return Key("*"), len(key)
+			}
+			return Key("*"), conflictIndex + nextDot
+		}
+		return nil, -1
+	}
+
+	v, f := tree.Resolve(Key("foo.bar.baz"), resolver)
+	assert.Equal(t, "foo.bar.baz", v)
+	assert.True(t, f)
+
+	v, f = tree.Resolve(Key("foo.xyz.baz"), resolver)
+	assert.Equal(t, "foo.*.baz", v)
+	assert.True(t, f)
+
+	v, f = tree.Resolve(Key("foo.bar.xyz"), resolver)
+	assert.Equal(t, "foo.bar.*", v)
+	assert.True(t, f)
+
+	v, f = tree.Resolve(Key("xyz.bar.baz"), resolver)
+	assert.Equal(t, "*.bar.*", v)
+	assert.True(t, f)
+
+	v, f = tree.Resolve(Key("xyz.bar.*"), resolver)
+	assert.Equal(t, "*.bar.*", v)
+	assert.True(t, f)
+
+	v, f = tree.Resolve(Key("xyz.bar."), resolver)
+	assert.Zero(t, v)
+	assert.False(t, f)
+
+	v, f = tree.Resolve(Key(""), resolver)
+	assert.Zero(t, v)
+	assert.False(t, f)
+
+	v, f = tree.Resolve(Key("*"), resolver)
+	assert.Zero(t, v)
+	assert.False(t, f)
 }
 
 func TestTreeIterator(t *testing.T) {
