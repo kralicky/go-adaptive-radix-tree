@@ -765,6 +765,15 @@ func (l *leaf[V]) prefixMatch(key Key) bool {
 	return bytes.Compare(l.key[:len(key)], key) == 0
 }
 
+// checks if this leaf's key is a prefix match of the given non-empty key
+func (l *leaf[V]) prefixMatchInverse(key Key) bool {
+	if len(key) == 0 || len(l.key) == 0 {
+		return false
+	}
+
+	return bytes.HasPrefix(key, l.key)
+}
+
 // Base node methods
 func (an *artNode[V]) match(key Key, depth uint32) uint32 /* 1st mismatch index*/ {
 	idx := uint32(0)

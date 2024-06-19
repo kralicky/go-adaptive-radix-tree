@@ -131,6 +131,50 @@ func TestTreeUpdate(t *testing.T) {
 	assert.Equal(t, "otherValue", v)
 }
 
+func TestTreeCreateOrUpdate(t *testing.T) {
+	type object struct {
+		items map[string]string
+	}
+	tree := newTree[object]()
+	create := func() object {
+		return object{make(map[string]string)}
+	}
+	ret := tree.Update(Key("key"), create, func(o *object) {
+		assert.NotNil(t, o.items)
+		assert.Empty(t, o.items)
+		o.items["key0"] = "value0"
+	})
+	assert.True(t, ret)
+
+	v, found := tree.Search(Key("key"))
+	assert.True(t, found)
+	assert.Equal(t, object{map[string]string{"key0": "value0"}}, v)
+
+	ret = tree.Update(Key("key"), func() object {
+		t.FailNow()
+		panic("unreachable")
+	}, func(o *object) {
+		o.items["key1"] = "value1"
+	})
+	assert.False(t, ret)
+
+	v, found = tree.Search(Key("key"))
+	assert.True(t, found)
+	assert.Equal(t, object{map[string]string{"key0": "value0", "key1": "value1"}}, v)
+
+	ret = tree.Update(Key("key"), func() object {
+		t.FailNow()
+		panic("unreachable")
+	}, func(o *object) {
+		o.items["key2"] = "value2"
+	})
+	assert.False(t, ret)
+
+	v, found = tree.Search(Key("key"))
+	assert.True(t, found)
+	assert.Equal(t, object{map[string]string{"key0": "value0", "key1": "value1", "key2": "value2"}}, v)
+}
+
 func TestTreeInsertSimilarPrefix(t *testing.T) {
 	tree := newTree[int]()
 
@@ -904,6 +948,102 @@ func TestTreeResolve(t *testing.T) {
 	v, f = tree.Resolve(Key("*"), resolver)
 	assert.Zero(t, v)
 	assert.False(t, f)
+}
+
+func TestTreeSearchNearest(t *testing.T) {
+	tree := New[string]()
+	tree.Insert(Key("/foo"), "/foo value")
+	tree.Insert(Key("/foo/bar"), "/foo/bar value")
+	tree.Insert(Key("/foo/bar/baz"), "/foo/bar/baz value")
+	tree.Insert(Key("/foo/bar2"), "/foo/bar2 value")
+	tree.Insert(Key("/foo/bar2/baz"), "/foo/bar2/baz value")
+	tree.Insert(Key("/foo/bar2/baz2"), "/foo/bar2/baz2 value")
+	tree.Insert(Key("/bar/"), "/bar/ value")
+	tree.Insert(Key("/0/"), "/0/ value")
+	tree.Insert(Key("/0/1/"), "/0/1/ value")
+	tree.Insert(Key("/0/1/2/"), "/0/1/2/ value")
+	tree.Insert(Key("/0/1/2/3/"), "/1/2/3/ value")
+
+	// fmt.Println(tree)
+	k, v, f := tree.SearchNearest(Key("/foo"))
+	assert.Equal(t, Key("/foo"), k)
+	assert.Equal(t, "/foo value", v)
+	assert.True(t, f)
+
+	k, v, f = tree.SearchNearest(Key("/foo/a"))
+	assert.Equal(t, Key("/foo"), k)
+	assert.Equal(t, "/foo value", v)
+	assert.True(t, f)
+
+	k, v, f = tree.SearchNearest(Key("/foo/b"))
+	assert.Equal(t, Key("/foo"), k)
+	assert.Equal(t, "/foo value", v)
+	assert.True(t, f)
+
+	k, v, f = tree.SearchNearest(Key("/foo/ba"))
+	assert.Equal(t, Key("/foo"), k)
+	assert.Equal(t, "/foo value", v)
+	assert.True(t, f)
+
+	k, v, f = tree.SearchNearest(Key("/foo/baz"))
+	assert.Equal(t, Key("/foo"), k)
+	assert.Equal(t, "/foo value", v)
+	assert.True(t, f)
+
+	k, v, f = tree.SearchNearest(Key("/foo/baz/"))
+	assert.Equal(t, Key("/foo"), k)
+	assert.Equal(t, "/foo value", v)
+	assert.True(t, f)
+
+	k, v, f = tree.SearchNearest(Key("/xyz"))
+	assert.Equal(t, Key(nil), k)
+	assert.Equal(t, "", v)
+	assert.False(t, f)
+
+	k, v, f = tree.SearchNearest(Key("/bar"))
+	assert.Equal(t, Key(nil), k)
+	assert.Equal(t, "", v)
+	assert.False(t, f)
+
+	k, v, f = tree.SearchNearest(Key("/bar/"))
+	assert.Equal(t, Key("/bar/"), k)
+	assert.Equal(t, "/bar/ value", v)
+	assert.True(t, f)
+
+	k, v, f = tree.SearchNearest(Key("/bar/baz"))
+	assert.Equal(t, Key("/bar/"), k)
+	assert.Equal(t, "/bar/ value", v)
+	assert.True(t, f)
+
+	k, v, f = tree.SearchNearest(Key("/0/x"))
+	assert.Equal(t, Key("/0/"), k)
+	assert.Equal(t, "/0/ value", v)
+	assert.True(t, f)
+
+	k, v, f = tree.SearchNearest(Key("/0/x"))
+	assert.Equal(t, Key("/0/"), k)
+	assert.Equal(t, "/0/ value", v)
+	assert.True(t, f)
+
+	k, v, f = tree.SearchNearest(Key("/0/1"))
+	assert.Equal(t, Key("/0/"), k)
+	assert.Equal(t, "/0/ value", v)
+	assert.True(t, f)
+
+	k, v, f = tree.SearchNearest(Key("/0/1/"))
+	assert.Equal(t, Key("/0/1/"), k)
+	assert.Equal(t, "/0/1/ value", v)
+	assert.True(t, f)
+
+	k, v, f = tree.SearchNearest(Key("/0/1/2"))
+	assert.Equal(t, Key("/0/1/"), k)
+	assert.Equal(t, "/0/1/ value", v)
+	assert.True(t, f)
+
+	k, v, f = tree.SearchNearest(Key("/0/1/2/"))
+	assert.Equal(t, Key("/0/1/2/"), k)
+	assert.Equal(t, "/0/1/2/ value", v)
+	assert.True(t, f)
 }
 
 func TestTreeIterator(t *testing.T) {

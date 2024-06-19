@@ -2,6 +2,7 @@ package art
 
 import (
 	"errors"
+	"slices"
 )
 
 // A constant exposing all node types.
@@ -77,6 +78,11 @@ type Tree[V any] interface {
 	// If the key already in the tree then return oldValue, true and nil, false otherwise.
 	Insert(key Key, value V) (oldValue V, updated bool)
 
+	// Update calls the provided update function to edit the value in-place. If
+	// the key does not exist yet, it calls the provided create function first,
+	// then the update function with the newly created value.
+	Update(key Key, create func() V, update func(*V)) (created bool)
+
 	// Delete removes a key from the tree and key's value, true is returned.
 	// If the key does not exists then nothing is done and nil, false is returned.
 	Delete(key Key) (value V, deleted bool)
@@ -84,6 +90,10 @@ type Tree[V any] interface {
 	// Search returns the value of the specific key.
 	// If the key exists then return value, true and nil, false otherwise.
 	Search(key Key) (value V, found bool)
+
+	// SearchNearest returns the value of the specific key, or if not found, the
+	// value of the closest key less than the given key (price is right rules).
+	SearchNearest(key Key) (nearest Key, value V, found bool)
 
 	// Resolve attempts to search for the value of the specific key, calling the
 	// provided function to try resolving conflicts by mutating parts of the key
@@ -124,4 +134,8 @@ type Tree[V any] interface {
 // New creates a new adaptive radix tree
 func New[V any]() Tree[V] {
 	return newTree[V]()
+}
+
+func (k Key) Compare(other Key) int {
+	return slices.Compare(k, other)
 }

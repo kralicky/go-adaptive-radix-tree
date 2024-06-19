@@ -16,13 +16,28 @@ type tree[V any] struct {
 var _ Tree[struct{}] = &tree[struct{}]{}
 
 func (t *tree[V]) Insert(key Key, value V) (V, bool) {
-	oldValue, updated := t.recursiveInsert(&t.root, key, value, 0)
+	var oldValue V
+	update := func(v *V) {
+		oldValue = *v
+		*v = value
+	}
+	updated := t.recursiveInsert(&t.root, key, func() (_ V) { return }, update, 0)
 	if !updated {
 		t.version++
 		t.size++
 	}
 
 	return oldValue, updated
+}
+
+func (t *tree[V]) Update(key Key, create func() V, update func(*V)) (created bool) {
+	if create == nil {
+		create = func() (_ V) { return }
+	}
+	if update == nil {
+		update = func(*V) {}
+	}
+	return !t.recursiveInsert(&t.root, key, create, update, 0)
 }
 
 func (t *tree[V]) Delete(key Key) (_ V, _ bool) {
@@ -63,6 +78,48 @@ func (t *tree[V]) Search(key Key) (_ V, _ bool) {
 		if *next != nil {
 			current = *next
 		} else {
+			current = nil
+		}
+		depth++
+	}
+
+	return
+}
+
+func (t *tree[V]) SearchNearest(key Key) (nearest Key, value V, found bool) {
+	current := t.root
+	depth := uint32(0)
+	var prevLeaf *leaf[V]
+	for current != nil {
+		if current.isLeaf() {
+			leaf := current.leaf()
+			if leaf.prefixMatchInverse(key) {
+				return slices.Clone(leaf.key), leaf.value, true
+			}
+			return
+		}
+
+		curNode := current.node()
+
+		if curNode.prefixLen > 0 {
+			prefixLen := current.match(key, depth)
+			if prefixLen != min(curNode.prefixLen, MaxPrefixLen) {
+				if prevLeaf != nil {
+					return slices.Clone(prevLeaf.key), prevLeaf.value, true
+				}
+				return
+			}
+			depth += curNode.prefixLen
+		}
+
+		minimum := current.minimum()
+		next := current.findChild(key.charAt(int(depth)), key.valid(int(depth)))
+		if *next != nil {
+			prevLeaf, current = minimum, *next
+		} else {
+			if minimum.prefixMatchInverse(key) {
+				return slices.Clone(minimum.key), minimum.value, true
+			}
 			current = nil
 		}
 		depth++
@@ -118,20 +175,19 @@ func (t *tree[V]) Resolve(key Key, resolver func(key Key, conflictIndex int) (Ke
 			depth += curNode.prefixLen
 		}
 
-	retry:
-		next := current.findChild(key.charAt(int(depth)), key.valid(int(depth)))
-		if *next != nil {
-			current = *next
-		} else {
-			sub, upperBound := resolver(key, int(depth))
-			if upperBound > int(depth) {
-				key = slices.Replace([]byte(key), int(depth), upperBound, sub...)
-				goto retry
+		for {
+			next := current.findChild(key.charAt(int(depth)), key.valid(int(depth)))
+			if *next != nil {
+				current = *next
+			} else {
+				if doResolve(int(depth)) {
+					continue
+				}
+				current = nil
 			}
-			current = nil
+			depth++
+			break
 		}
-
-		depth++
 	}
 
 	return
@@ -165,10 +221,12 @@ func (t *tree[V]) Size() int {
 	return t.size
 }
 
-func (t *tree[V]) recursiveInsert(curNode **artNode[V], key Key, value V, depth uint32) (_ V, _ bool) {
+func (t *tree[V]) recursiveInsert(curNode **artNode[V], key Key, value func() V, update func(*V), depth uint32) (_ bool) {
 	current := *curNode
 	if current == nil {
-		replaceRef(curNode, newLeaf(key, value))
+		v := value()
+		update(&v)
+		replaceRef(curNode, newLeaf(key, v))
 		return
 	}
 
@@ -177,12 +235,13 @@ func (t *tree[V]) recursiveInsert(curNode **artNode[V], key Key, value V, depth 
 
 		// update exists value
 		if leaf.match(key) {
-			oldValue := leaf.value
-			leaf.value = value
-			return oldValue, true
+			update(&leaf.value)
+			return true
 		}
 		// new value, split the leaf into new node4
-		newLeaf := newLeaf(key, value)
+		v := value()
+		update(&v)
+		newLeaf := newLeaf(key, v)
 		leaf2 := newLeaf.leaf()
 		leafsLCP := t.longestCommonPrefix(leaf, leaf2, depth)
 
@@ -231,7 +290,9 @@ func (t *tree[V]) recursiveInsert(curNode **artNode[V], key Key, value V, depth 
 		}
 
 		// Insert the new leaf
-		newNode.addChild(key.charAt(int(depth+prefixMismatchIdx)), key.valid(int(depth+prefixMismatchIdx)), newLeaf(key, value))
+		v := value()
+		update(&v)
+		newNode.addChild(key.charAt(int(depth+prefixMismatchIdx)), key.valid(int(depth+prefixMismatchIdx)), newLeaf(key, v))
 		replaceRef(curNode, newNode)
 
 		return
@@ -242,11 +303,13 @@ NEXT_NODE:
 	// Find a child to recursive to
 	next := current.findChild(key.charAt(int(depth)), key.valid(int(depth)))
 	if *next != nil {
-		return t.recursiveInsert(next, key, value, depth+1)
+		return t.recursiveInsert(next, key, value, update, depth+1)
 	}
 
 	// No Child, artNode goes with us
-	current.addChild(key.charAt(int(depth)), key.valid(int(depth)), newLeaf(key, value))
+	v := value()
+	update(&v)
+	current.addChild(key.charAt(int(depth)), key.valid(int(depth)), newLeaf(key, v))
 
 	return
 }
