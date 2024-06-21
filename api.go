@@ -100,10 +100,11 @@ type Tree[V any] interface {
 	// during the tree traversal process.
 	// Whenever a conflict is encountered, the resolver function will be called
 	// with the current key and the index at which it encountered a conflict.
-	// If the function returns a positive upperBound > conflictIndex, the bytes
-	// [conflictIndex:upperBound) in the key will be replaced with substitution,
-	// then the search will continue.
-	Resolve(key Key, resolver func(key Key, conflictIndex int) (substitution Key, upperBound int)) (value V, found bool)
+	// If the function returns a positive upperBound > conflictIndex and a positive
+	// lowerBound <= conflictIndex, the bytes [lowerBound:upperBound) in the key
+	// will be replaced with substitution, then the search will continue.
+	// Returning lowerBound < conflictIndex will result in backtracking.
+	Resolve(key Key, resolver func(key Key, conflictIndex int) (substitution Key, lowerBound, upperBound int)) (value V, found bool)
 
 	// ForEach executes a provided callback once per leaf node by default.
 	// The callback iteration is terminated if the callback function returns false.

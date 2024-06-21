@@ -1,6 +1,7 @@
 package art
 
 import (
+	"bytes"
 	"slices"
 )
 
@@ -128,19 +129,34 @@ func (t *tree[V]) SearchNearest(key Key) (nearest Key, value V, found bool) {
 	return
 }
 
-func (t *tree[V]) Resolve(key Key, resolver func(key Key, conflictIndex int) (Key, int)) (value V, found bool) {
-	doResolve := func(conflictIndex int) bool {
-		sub, upperBound := resolver(key, conflictIndex)
-		if upperBound > conflictIndex {
-			key = slices.Replace([]byte(key), conflictIndex, upperBound, sub...)
-			return true
+func (t *tree[V]) Resolve(key Key, resolver func(key Key, conflictIndex int) (Key, int, int)) (value V, found bool) {
+	doResolve := func(conflictIndex int) (edited bool, backtrack bool) {
+		sub, lowerBound, upperBound := resolver(key, conflictIndex)
+		if upperBound-lowerBound > 0 && upperBound >= conflictIndex && lowerBound <= conflictIndex && lowerBound >= 0 {
+			if bytes.Equal(key[lowerBound:upperBound], sub) {
+				return false, false
+			}
+			key = slices.Replace([]byte(key), lowerBound, upperBound, sub...)
+			return true, lowerBound < conflictIndex
 		}
-		return false
+		return false, false
 	}
 
-	current := t.root
-	depth := uint32(0)
-	for current != nil {
+	type stackEntry struct {
+		node  *artNode[V]
+		depth uint32
+	}
+
+	stack := []stackEntry{{t.root, 0}}
+
+LOOP:
+	for {
+		top := stack[len(stack)-1]
+		current := top.node
+		if current == nil {
+			break
+		}
+		depth := top.depth
 		if current.isLeaf() {
 			leaf := current.leaf()
 
@@ -158,7 +174,12 @@ func (t *tree[V]) Resolve(key Key, resolver func(key Key, conflictIndex int) (Ke
 					}
 					conflictIndex++
 				}
-				if doResolve(conflictIndex) {
+				if edited, backtrack := doResolve(conflictIndex); edited {
+					if backtrack {
+						// pop the stack
+						stack = stack[:len(stack)-1]
+						continue LOOP
+					}
 					continue
 				}
 				return
@@ -170,22 +191,34 @@ func (t *tree[V]) Resolve(key Key, resolver func(key Key, conflictIndex int) (Ke
 		if curNode.prefixLen > 0 {
 			prefixLen := current.match(key, depth)
 			if prefixLen != min(curNode.prefixLen, MaxPrefixLen) {
+				if edited, backtrack := doResolve(int(prefixLen)); edited {
+					if backtrack || depth > prefixLen {
+						// always backtrack if e.g. we conflicted on byte 0 of a key with
+						// depth > 0, which would otherwise never resolve
+						stack = stack[:len(stack)-1]
+						continue LOOP
+					}
+					continue
+				}
 				return
 			}
+
 			depth += curNode.prefixLen
 		}
 
 		for {
 			next := current.findChild(key.charAt(int(depth)), key.valid(int(depth)))
-			if *next != nil {
-				current = *next
-			} else {
-				if doResolve(int(depth)) {
+			if *next == nil {
+				if edited, backtrack := doResolve(int(depth)); edited {
+					if backtrack {
+						stack = stack[:len(stack)-1]
+						continue LOOP
+					}
 					continue
 				}
 				current = nil
 			}
-			depth++
+			stack = append(stack, stackEntry{*next, depth + 1})
 			break
 		}
 	}
