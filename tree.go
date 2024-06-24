@@ -130,16 +130,19 @@ func (t *tree[V]) SearchNearest(key Key) (nearest Key, value V, found bool) {
 }
 
 func (t *tree[V]) Resolve(key Key, resolver func(key Key, conflictIndex int) (Key, int, int)) (value V, found bool) {
-	doResolve := func(conflictIndex int) (edited bool, backtrack bool) {
+	doResolve := func(conflictIndex int) (edited bool, lower int, backtrack bool) {
 		sub, lowerBound, upperBound := resolver(key, conflictIndex)
 		if upperBound-lowerBound > 0 && upperBound >= conflictIndex && lowerBound <= conflictIndex && lowerBound >= 0 {
 			if bytes.Equal(key[lowerBound:upperBound], sub) {
-				return false, false
+				return false, 0, false
 			}
 			key = slices.Replace([]byte(key), lowerBound, upperBound, sub...)
-			return true, lowerBound < conflictIndex
+			if lowerBound < conflictIndex {
+				return true, lowerBound, true
+			}
+			return true, lowerBound, false
 		}
-		return false, false
+		return false, 0, false
 	}
 
 	type stackEntry struct {
@@ -147,7 +150,8 @@ func (t *tree[V]) Resolve(key Key, resolver func(key Key, conflictIndex int) (Ke
 		depth uint32
 	}
 
-	stack := []stackEntry{{t.root, 0}}
+	stack := make([]stackEntry, 0, 4)
+	stack = append(stack, stackEntry{t.root, 0})
 
 LOOP:
 	for {
@@ -160,6 +164,7 @@ LOOP:
 		if current.isLeaf() {
 			leaf := current.leaf()
 
+		MATCH:
 			for {
 				if leaf.match(key) {
 					return leaf.value, true
@@ -168,20 +173,36 @@ LOOP:
 				// find the conflict index starting at depth
 				limit := min(len(leaf.key), len(key))
 				conflictIndex := int(depth)
-				for i := conflictIndex; i < limit; i++ {
-					if leaf.key[i] != key[i] {
+				for ; conflictIndex < limit; conflictIndex++ {
+					if leaf.key[conflictIndex] != key[conflictIndex] {
 						break
 					}
-					conflictIndex++
 				}
-				if edited, backtrack := doResolve(conflictIndex); edited {
+				if edited, lowerBound, backtrack := doResolve(conflictIndex); edited {
 					if backtrack {
-						// pop the stack
-						stack = stack[:len(stack)-1]
+						// step back until we reach the depth where the key was modified
+						for stack[len(stack)-1].depth > uint32(lowerBound) {
+							stack = stack[:len(stack)-1]
+						}
 						continue LOOP
 					}
-					continue
+					continue MATCH
 				}
+
+				// if we get here, bail out - we have keys structured like this:
+				// "a.b.c.d"
+				// "a.*.c.e"
+				//  ┌─>b──┐  ┌──>d
+				//  │     ▼──┘
+				//  a     c
+				//  │     ▲──┐
+				//  └─>*──┘  └──>e
+				// s.t. making decisions for resolving paths after 'c' requires knowing
+				// how we resolved paths before 'c'. solving this for all possible trees
+				// requires much more complex backtracking that would increase the time
+				// complexity of this search to an unreasonable level; it would likely
+				// just be faster to iterate over all leaves and check them individually
+
 				return
 			}
 		}
@@ -191,14 +212,13 @@ LOOP:
 		if curNode.prefixLen > 0 {
 			prefixLen := current.match(key, depth)
 			if prefixLen != min(curNode.prefixLen, MaxPrefixLen) {
-				if edited, backtrack := doResolve(int(prefixLen)); edited {
-					if backtrack || depth > prefixLen {
-						// always backtrack if e.g. we conflicted on byte 0 of a key with
-						// depth > 0, which would otherwise never resolve
-						stack = stack[:len(stack)-1]
-						continue LOOP
+				if edited, lowerBound, backtrack := doResolve(int(depth)); edited {
+					if backtrack {
+						for stack[len(stack)-1].depth > uint32(lowerBound) {
+							stack = stack[:len(stack)-1]
+						}
 					}
-					continue
+					continue LOOP
 				}
 				return
 			}
@@ -206,15 +226,18 @@ LOOP:
 			depth += curNode.prefixLen
 		}
 
+	FIND:
 		for {
 			next := current.findChild(key.charAt(int(depth)), key.valid(int(depth)))
 			if *next == nil {
-				if edited, backtrack := doResolve(int(depth)); edited {
+				if edited, lowerBound, backtrack := doResolve(int(depth)); edited {
 					if backtrack {
-						stack = stack[:len(stack)-1]
+						for stack[len(stack)-1].depth > uint32(lowerBound) {
+							stack = stack[:len(stack)-1]
+						}
 						continue LOOP
 					}
-					continue
+					continue FIND
 				}
 				current = nil
 			}

@@ -895,85 +895,126 @@ func TestTreeTraversalPrefixWords(t *testing.T) {
 
 func TestTreeResolve(t *testing.T) {
 	resolver := DelimiterResolver('.')
+
+	insert := func(tree Tree[string], key string) {
+		tree.Insert(Key(key), key)
+	}
+
+	shouldMatch := func(t *testing.T, tree Tree[string], key string, pattern string) {
+		t.Helper()
+		v, f := tree.Resolve(Key(key), resolver)
+		if assert.True(t, f) {
+			assert.Equal(t, pattern, v)
+		}
+	}
+
+	shouldNotMatch := func(t *testing.T, tree Tree[string], key string) {
+		t.Helper()
+		v, f := tree.Resolve(Key(key), resolver)
+		assert.Zero(t, v)
+		assert.False(t, f)
+	}
 	t.Run("wildcards", func(t *testing.T) {
 		tree := New[string]()
 
-		tree.Insert(Key("foo.bar.baz"), "foo.bar.baz")
-		tree.Insert(Key("foo.*.baz"), "foo.*.baz")
-		tree.Insert(Key("foo.bar.*"), "foo.bar.*")
-		tree.Insert(Key("*.bar.*"), "*.bar.*")
+		insert(tree, "foo.bar.baz")
+		insert(tree, "foo.*.baz")
+		insert(tree, "foo.bar.*")
+		insert(tree, "*.bar.*")
 
-		v, f := tree.Resolve(Key("foo.bar.baz"), resolver)
-		assert.Equal(t, "foo.bar.baz", v)
-		assert.True(t, f)
-
-		v, f = tree.Resolve(Key("foo.xyz.baz"), resolver)
-		assert.Equal(t, "foo.*.baz", v)
-		assert.True(t, f)
-
-		v, f = tree.Resolve(Key("foo.bar.xyz"), resolver)
-		assert.Equal(t, "foo.bar.*", v)
-		assert.True(t, f)
-
-		v, f = tree.Resolve(Key("xyz.bar.baz"), resolver)
-		assert.Equal(t, "*.bar.*", v)
-		assert.True(t, f)
-
-		v, f = tree.Resolve(Key("xyz.bar.*"), resolver)
-		assert.Equal(t, "*.bar.*", v)
-		assert.True(t, f)
-
-		v, f = tree.Resolve(Key("xyz.bar."), resolver)
-		assert.Zero(t, v)
-		assert.False(t, f)
-
-		v, f = tree.Resolve(Key(""), resolver)
-		assert.Zero(t, v)
-		assert.False(t, f)
-
-		v, f = tree.Resolve(Key("*"), resolver)
-		assert.Zero(t, v)
-		assert.False(t, f)
+		shouldMatch(t, tree, "foo.bar.baz", "foo.bar.baz")
+		shouldMatch(t, tree, "foo.xyz.baz", "foo.*.baz")
+		shouldMatch(t, tree, "foo.bar.xyz", "foo.bar.*")
+		shouldMatch(t, tree, "xyz.bar.baz", "*.bar.*")
+		shouldMatch(t, tree, "xyz.bar.*", "*.bar.*")
+		shouldNotMatch(t, tree, "xyz.bar.")
+		shouldNotMatch(t, tree, "")
+		shouldNotMatch(t, tree, "*")
 	})
 
 	t.Run("similar-wildcards", func(t *testing.T) {
 		tree := New[string]()
-		tree.Insert(Key("*.com.example"), "*.com.example")
-		tree.Insert(Key("*.com.example.foo.*"), "*.com.example.foo.*")
+		insert(tree, "*.com.example")
+		insert(tree, "*.com.example.foo.*")
 
-		v, f := tree.Resolve(Key("443.com.example"), resolver)
-		assert.Equal(t, "*.com.example", v)
-		assert.True(t, f)
-
-		v, f = tree.Resolve(Key("443.com.example.foo"), resolver)
-		assert.Zero(t, v)
-		assert.False(t, f)
-
-		v, f = tree.Resolve(Key("443.com.example.foo.xyz"), resolver)
-		assert.Equal(t, "*.com.example.foo.*", v)
-		assert.True(t, f)
+		shouldMatch(t, tree, "443.com.example", "*.com.example")
+		shouldNotMatch(t, tree, "443.com.example.foo")
+		shouldMatch(t, tree, "443.com.example.foo.xyz", "*.com.example.foo.*")
 	})
 
 	t.Run("wildcards-with-partial-matching", func(t *testing.T) {
 		tree := New[string]()
-		tree.Insert(Key("*.com.example"), "*.com.example")
-		tree.Insert(Key("443.com.example"), "443.com.example")
+		insert(tree, "*.com.example")
+		insert(tree, "443.com.example")
 
-		v, f := tree.Resolve(Key("443.com.example"), resolver)
-		assert.Equal(t, "443.com.example", v)
-		assert.True(t, f)
+		shouldMatch(t, tree, "443.com.example", "443.com.example")
+		shouldMatch(t, tree, "442.com.example", "*.com.example")
+		shouldMatch(t, tree, "44.com.example", "*.com.example")
+		shouldMatch(t, tree, "4.com.example", "*.com.example")
+	})
 
-		v, f = tree.Resolve(Key("442.com.example"), resolver)
-		assert.Equal(t, "*.com.example", v)
-		assert.True(t, f)
+	t.Run("sequential-wildcards", func(t *testing.T) {
+		tree := New[string]()
+		insert(tree, "com.example.*.*")
+		insert(tree, "*.*.foo")
 
-		v, f = tree.Resolve(Key("44.com.example"), resolver)
-		assert.Equal(t, "*.com.example", v)
-		assert.True(t, f)
+		shouldMatch(t, tree, "com.example.foo.bar", "com.example.*.*")
+		shouldMatch(t, tree, "com.example.foo.baz", "com.example.*.*")
+		shouldMatch(t, tree, "com.example.bar.baz", "com.example.*.*")
+		shouldMatch(t, tree, "org.testing.foo", "*.*.foo")
+	})
 
-		v, f = tree.Resolve(Key("4.com.example"), resolver)
-		assert.Equal(t, "*.com.example", v)
-		assert.True(t, f)
+	t.Run("good-backtracking", func(t *testing.T) {
+		tree := New[string]()
+		for _, key := range []string{
+			"443.com.example",
+			"443.com.example.foo.*",
+			"443.com.example",
+			"443.com.example.secure",
+			"443.*.example",
+			"443.com.example.*",
+			"443.com.example.*.foo",
+			"443.com.example.*.*",
+			"3000.localhost",
+			"*.com.example",
+			"*.com.example.foo.*",
+			"*.com.example",
+			"*.com.example.secure",
+			"*.*.example",
+			"*.com.example.*",
+			"*.com.example.*.foo",
+			"*.com.example.*.*",
+		} {
+			insert(tree, key)
+		}
+
+		shouldMatch(t, tree, "443.com.example.f", "443.com.example.*")
+		shouldMatch(t, tree, "443.com.example.fo", "443.com.example.*")
+		shouldMatch(t, tree, "443.co.example", "443.*.example")
+		shouldMatch(t, tree, "443.coffee.example", "443.*.example")
+		shouldMatch(t, tree, "443.443.example", "443.*.example")
+		shouldMatch(t, tree, "444.443.example", "*.*.example")
+		shouldMatch(t, tree, "443.com.example.foo.foo", "443.com.example.foo.*")
+		shouldMatch(t, tree, "443.com.example.bar.foo", "443.com.example.*.foo")
+		shouldMatch(t, tree, "xyz.com.example.bar.foo", "*.com.example.*.foo")
+	})
+	t.Run("bad-backtracking", func(t *testing.T) {
+		tree := New[string]()
+		for _, key := range []string{
+			"a.b.c.d",
+			"a.*.c.e",
+			"a.*.*.f",
+			"a.b.*.g",
+			"a.*.*.h",
+		} {
+			insert(tree, key)
+		}
+
+		shouldMatch(t, tree, "a.b.c.d", "a.b.c.d")
+		shouldNotMatch(t, tree, "a.b.c.e")
+		shouldNotMatch(t, tree, "a.b.c.f")
+		shouldNotMatch(t, tree, "a.b.c.g")
+		shouldNotMatch(t, tree, "a.b.c.h")
 	})
 }
 
